@@ -1,0 +1,211 @@
+// server/routes/transactionRoutes.js
+import express from 'express';
+import mongoose from 'mongoose';
+import Transaction from '../models/Transaction.js';
+import { checkAnomalies } from '../utils/anomalyDetector.js';
+import { protect } from '../middleware/auth.js';
+
+const router = express.Router();
+
+// Helper to escape regex special characters
+const escapeRegex = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * @route   GET /api/transactions
+ * @desc    Get filtered, searched, and paginated transactions for the logged-in user
+ * @access  Private
+ */
+router.get('/', protect, async (req, res) => {
+  try {
+    const { search, category, startDate, endDate, page = 1, limit = 10 } = req.query;
+    const query = { userId: req.user.id };
+
+    if (search && search.trim() !== '') {
+      query.merchant = { $regex: escapeRegex(search.trim()), $options: 'i' };
+    }
+
+    if (category && category !== 'All') {
+      query.category = category;
+    }
+
+    if (startDate || endDate) {
+      query.date = {};
+      if (startDate) {
+        query.date.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        const eod = new Date(endDate);
+        eod.setUTCHours(23, 59, 59, 999);
+        query.date.$lte = eod;
+      }
+    }
+
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 10));
+    const skip = (pageNum - 1) * limitNum;
+
+    const total = await Transaction.countDocuments(query);
+
+    const transactions = await Transaction.find(query)
+      .sort({ date: -1 })
+      .skip(skip)
+      .limit(limitNum);
+
+    return res.json({
+      success: true,
+      transactions,
+      page: pageNum,
+      limit: limitNum,
+      pages: Math.ceil(total / limitNum) || 1,
+      totalRecords: total
+    });
+  } catch (error) {
+    console.error('Error fetching transactions:', error);
+    return res.status(500).json({ success: false, error: 'Server error while fetching transactions.' });
+  }
+});
+
+/**
+ * @route   POST /api/transactions
+ * @desc    Create a new transaction (runs automated anomaly check)
+ * @access  Private
+ */
+router.post('/', protect, async (req, res) => {
+  try {
+    const { merchant, amount, category, date, type, lineItems, receiptImageUrl } = req.body;
+
+    if (!merchant || amount === undefined || amount === null || !category) {
+      return res.status(400).json({ success: false, error: 'Please provide merchant, amount, and category.' });
+    }
+
+    const userId = req.user._id || req.user.id;
+
+    let validDate = new Date();
+    if (date) {
+      const parsed = new Date(date);
+      if (!isNaN(parsed.getTime())) {
+        validDate = parsed;
+      }
+    }
+
+    const txData = {
+      userId,
+      merchant: merchant.trim(),
+      amount: Number(amount),
+      category,
+      date: validDate,
+      type: type || 'expense',
+      lineItems: Array.isArray(lineItems) ? lineItems : [],
+      receiptImageUrl: receiptImageUrl || null
+    };
+
+    if (txData.type === 'expense') {
+      try {
+        const anomalyResult = await checkAnomalies(userId, txData);
+        txData.isFlagged = anomalyResult.isFlagged;
+        txData.flagReason = anomalyResult.flagReason;
+      } catch (anomalyErr) {
+        console.warn('Anomaly detection check skipped:', anomalyErr.message);
+      }
+    }
+
+    const transaction = await Transaction.create(txData);
+    return res.status(201).json({ success: true, transaction });
+  } catch (error) {
+    console.error('Error creating transaction:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * @route   GET /api/transactions/:id
+ * @desc    Get single transaction by ID
+ * @access  Private
+ */
+router.get('/:id', protect, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ success: false, error: 'Invalid transaction ID.' });
+    }
+
+    const transaction = await Transaction.findOne({ _id: req.params.id, userId: req.user.id });
+
+    if (!transaction) {
+      return res.status(404).json({ success: false, error: 'Transaction not found.' });
+    }
+
+    return res.json({ success: true, transaction });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * @route   PUT /api/transactions/:id
+ * @desc    Update an existing transaction & re-evaluate anomalies
+ * @access  Private
+ */
+router.put('/:id', protect, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ success: false, error: 'Invalid transaction ID.' });
+    }
+
+    let transaction = await Transaction.findOne({ _id: req.params.id, userId: req.user.id });
+
+    if (!transaction) {
+      return res.status(404).json({ success: false, error: 'Transaction not found.' });
+    }
+
+    const updates = { ...req.body };
+    
+    if ((updates.amount || updates.category) && (updates.type === 'expense' || transaction.type === 'expense')) {
+      const updatedMock = {
+        merchant: updates.merchant || transaction.merchant,
+        amount: Number(updates.amount) || transaction.amount,
+        category: updates.category || transaction.category,
+        date: updates.date || transaction.date,
+        type: 'expense'
+      };
+      
+      const anomalyResult = await checkAnomalies(req.user.id, updatedMock);
+      updates.isFlagged = anomalyResult.isFlagged;
+      updates.flagReason = anomalyResult.flagReason;
+    }
+
+    transaction = await Transaction.findByIdAndUpdate(
+      req.params.id,
+      { $set: updates },
+      { new: true, runValidators: true }
+    );
+
+    return res.json({ success: true, transaction });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * @route   DELETE /api/transactions/:id
+ * @desc    Delete a transaction
+ * @access  Private
+ */
+router.delete('/:id', protect, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ success: false, error: 'Invalid transaction ID.' });
+    }
+
+    const transaction = await Transaction.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
+
+    if (!transaction) {
+      return res.status(404).json({ success: false, error: 'Transaction not found.' });
+    }
+
+    return res.json({ success: true, message: 'Transaction removed successfully.' });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+export default router;
