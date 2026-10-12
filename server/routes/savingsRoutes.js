@@ -93,8 +93,20 @@ async function makeRecommendations(userId) {
     const projected = day ? s.current / day * (monthStart(following.year, following.month).getTime() - monthStart(year, month).getTime()) / 86400000 : 0;
     return { category, baseline: Math.round(baseline), current: Math.round(s.current), projected: Math.round(projected), excess: Math.round(projected - baseline) };
   });
-  const actionable = candidates.filter(c => c.baseline > 0 && c.excess > Math.max(300, c.baseline * 0.1)).sort((a, b) => b.excess - a.excess).slice(0, 3);
+  let actionable = candidates
+    .filter(c => c.baseline > 0 && c.excess > Math.max(300, c.baseline * 0.1))
+    .sort((a, b) => b.excess - a.excess)
+    .slice(0, 3);
 
+  // If this is a new account without historical baselines, provide clearly
+  // labelled starter coaching from current spending instead of an empty panel.
+  if (!actionable.length) {
+    actionable = candidates
+      .filter(c => c.current > 0 && c.baseline === 0)
+      .sort((a, b) => b.projected - a.projected)
+      .slice(0, 3)
+      .map(c => ({ ...c, baseline: c.projected || c.current, starter: true }));
+  }
   if (!actionable.length) return { created: [], due: false };
   let advice = [];
   if (process.env.GEMINI_API_KEY) {
@@ -116,9 +128,9 @@ async function makeRecommendations(userId) {
     const target = Math.max(0, Math.min(c.baseline, Number(rec.targetMonthlyAmount) || Math.round(c.baseline * 0.9)));
     created.push(await SavingsRecommendation.create({
       userId, category: c.category,
-      title: String(rec.title || `Review ${c.category.toLowerCase()} spending`).slice(0, 100),
-      description: String(rec.description || `Your current-month pace is about ₹${c.projected}, versus a recent three-month average of ₹${c.baseline}. This is a trend, not proof that every increase is avoidable.`).slice(0, 1000),
-      action: String(rec.action || `Review recent ${c.category.toLowerCase()} purchases and try a monthly target of ₹${target}.`).slice(0, 1000),
+      title: String(rec.title || (c.starter ? `Set a ${c.category.toLowerCase()} spending target` : `Review ${c.category.toLowerCase()} spending`)).slice(0, 100),
+      description: String(rec.description || (c.starter ? `There is not enough prior-month data to compare this category yet. Your current spending pace is about ₹${c.projected}; use this as a starting estimate and adjust after you enter historical months.` : `Your current-month pace is about ₹${c.projected}, versus a recent three-month average of ₹${c.baseline}. This is a trend, not proof that every increase is avoidable.`)).slice(0, 1000),
+      action: String(rec.action || (c.starter ? `Track ${c.category.toLowerCase()} purchases for the rest of this month and use ₹${target} as an initial target; revise it when you have more history.` : `Review recent ${c.category.toLowerCase()} purchases and try a monthly target of ₹${target}.`)).slice(0, 1000),
       baselineMonthlyAmount: c.baseline, targetMonthlyAmount: target,
       expectedMonthlyReduction: Math.max(0, c.baseline - target), generatedAt: now, observationDays: 14
     }));
