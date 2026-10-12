@@ -45,11 +45,21 @@ export default function Dashboard({ refreshKey = 0 }) {
     try {
       setLoading(true);
       const [txRes, userRes] = await Promise.all([
-        axios.get('/transactions', { params: { search, category, limit: 100 } }),
+        axios.get('/transactions', { params: { search, category, limit: 100, page: 1 } }),
         axios.get('/auth/profile').catch(() => ({ data: { name: '', email: '', monthlyBudget: 0 } }))
       ]);
 
-      const txArray = txRes.data.transactions || (Array.isArray(txRes.data) ? txRes.data : []);
+      const firstPage = txRes.data;
+      let txArray = firstPage.transactions || (Array.isArray(firstPage) ? firstPage : []);
+      const totalPages = Math.max(1, Number(firstPage.pages) || 1);
+      if (totalPages > 1) {
+        const remainingPages = await Promise.all(
+          Array.from({ length: totalPages - 1 }, (_, index) =>
+            axios.get('/transactions', { params: { search, category, limit: 100, page: index + 2 } })
+          )
+        );
+        txArray = txArray.concat(...remainingPages.map((response) => response.data.transactions || []));
+      }
       setTransactions(txArray);
       
       if (userRes.data) {
