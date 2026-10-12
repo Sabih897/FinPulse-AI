@@ -133,7 +133,7 @@ router.post('/', protect, async (req, res) => {
     // even if email/SMS delivery is not configured or a provider is unavailable.
     if (txData.type === 'expense') {
       try {
-        const user = await User.findById(userId).select('name email phoneNumber monthlyBudget').lean();
+        const user = await User.findById(userId).select('name email monthlyBudget').lean();
         const exceedsBudgetRatio = user?.monthlyBudget > 0 && txData.amount / user.monthlyBudget >= 0.3;
         const isLargeExpense = txData.amount >= 10000 || exceedsBudgetRatio;
         if (isLargeExpense) {
