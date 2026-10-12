@@ -17,8 +17,10 @@ export async function sendFinancialAlert({ user, title, message }) {
           text: message
         })
       });
-      if (!response.ok) throw new Error(`Resend returned HTTP ${response.status}`);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(`Resend HTTP ${response.status}: ${payload.message || payload.name || JSON.stringify(payload)}`);
       results.email = 'sent';
+      console.info('Financial alert email accepted by Resend:', payload.id || 'message id unavailable');
     } catch (error) {
       results.email = 'failed';
       console.error('Financial alert email failed:', error.message);
@@ -39,13 +41,17 @@ export async function sendFinancialAlert({ user, title, message }) {
         headers: { Authorization: `Basic ${credentials}`, 'Content-Type': 'application/x-www-form-urlencoded' },
         body: form
       });
-      if (!response.ok) throw new Error(`Twilio returned HTTP ${response.status}`);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(`Twilio HTTP ${response.status}: ${payload.message || payload.code || JSON.stringify(payload)}`);
       results.sms = 'sent';
+      console.info('Financial alert SMS accepted by Twilio:', payload.sid || 'message id unavailable', payload.status || '');
     } catch (error) {
       results.sms = 'failed';
       console.error('Financial alert SMS failed:', error.message);
     }
   }
 
+  if (results.email === 'not_configured') console.warn('Financial alert email skipped: set RESEND_API_KEY and ALERT_FROM_EMAIL, and ensure the user has an email address.');
+  if (results.sms === 'not_configured') console.warn('Financial alert SMS skipped: set all TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER and save a user phone number.');
   return results;
 }
