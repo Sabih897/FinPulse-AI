@@ -4,6 +4,9 @@ import mongoose from 'mongoose';
 import Transaction from '../models/Transaction.js';
 import { checkAnomalies } from '../utils/anomalyDetector.js';
 import { protect } from '../middleware/auth.js';
+import Alert from '../models/Alert.js';
+import User from '../models/User.js';
+import { sendFinancialAlert } from '../utils/financialAlertNotifier.js';
 
 const router = express.Router();
 
@@ -123,7 +126,33 @@ router.post('/', protect, async (req, res) => {
     }
 
     const transaction = await Transaction.create(txData);
-    return res.status(201).json({ success: true, transaction });
+    let alert = null;
+
+    // Alert immediately on a large expense: at least ₹10,000 or more than 30%
+    // of the user's configured monthly budget. Transaction saving must succeed
+    // even if email/SMS delivery is not configured or a provider is unavailable.
+    if (txData.type === 'expense') {
+      const user = await User.findById(userId).select('name email phoneNumber monthlyBudget').lean();
+      const exceedsBudgetRatio = user?.monthlyBudget > 0 && txData.amount / user.monthlyBudget >= 0.3;
+      const isLargeExpense = txData.amount >= 10000 || exceedsBudgetRatio;
+      if (isLargeExpense) {
+        const severity = txData.amount >= 50000 || (user?.monthlyBudget > 0 && txData.amount >= user.monthlyBudget * 0.75)
+          ? 'critical' : 'warning';
+        const title = severity === 'critical' ? 'Very large transaction detected' : 'Large transaction detected';
+        const reason = user?.monthlyBudget > 0
+          ? `This expense is ${Math.round(txData.amount / user.monthlyBudget * 100)}% of your monthly budget.`
+          : 'This expense meets FinPulse AI’s large-transaction threshold of ₹10,000.';
+        const message = `${txData.merchant}: ₹${txData.amount.toLocaleString('en-IN')} on ${validDate.toISOString().slice(0, 10)}. ${reason} If you do not recognize it, contact your bank promptly.`;
+        alert = await Alert.create({ userId, transactionId: transaction._id, title, message, severity });
+        // Deliver configured email/SMS channels asynchronously from the request's
+        // point of view; provider failures must never roll back the transaction.
+        sendFinancialAlert({ user, title, message }).catch((err) => {
+          console.error('Financial alert delivery failed:', err.message);
+        });
+      }
+    }
+
+    return res.status(201).json({ success: true, transaction, alert });
   } catch (error) {
     console.error('Error creating transaction:', error);
     return res.status(500).json({ success: false, error: error.message });
