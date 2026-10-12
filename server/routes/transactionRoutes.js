@@ -31,11 +31,15 @@ router.get('/', protect, async (req, res) => {
     if (startDate || endDate) {
       query.date = {};
       if (startDate) {
-        query.date.$gte = new Date(startDate);
+        // Date-only filters are interpreted as India calendar dates, matching the app's monthly dashboard.
+        query.date.$gte = /^\\d{4}-\\d{2}-\\d{2}$/.test(startDate)
+          ? new Date(`${startDate}T00:00:00+05:30`)
+          : new Date(startDate);
       }
       if (endDate) {
-        const eod = new Date(endDate);
-        eod.setUTCHours(23, 59, 59, 999);
+        const eod = /^\\d{4}-\\d{2}-\\d{2}$/.test(endDate)
+          ? new Date(`${endDate}T23:59:59.999+05:30`)
+          : new Date(endDate);
         query.date.$lte = eod;
       }
     }
