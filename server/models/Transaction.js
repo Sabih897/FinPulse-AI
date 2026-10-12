@@ -8,7 +8,7 @@ const transactionSchema = new mongoose.Schema({
   category: { 
     type: String, 
     required: true,
-    enum: ['Groceries', 'Utilities', 'Dining', 'Entertainment', 'Transport', 'Healthcare', 'Subscriptions', 'Shopping', 'Others'] 
+    enum: ['Groceries', 'Utilities', 'Dining', 'Entertainment', 'Transport', 'Healthcare', 'Subscriptions', 'Shopping', 'Salary', 'Freelance', 'Investments', 'Gift', 'Rental', 'Refunds', 'Others'] 
   },
   date: { type: Date, default: Date.now, index: true },
   type: { type: String, enum: ['expense', 'income'], default: 'expense' },
