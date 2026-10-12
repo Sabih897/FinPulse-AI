@@ -22,6 +22,11 @@ export default function Dashboard({ refreshKey = 0 }) {
   const [category, setCategory] = useState('All');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
+  const [alerts, setAlerts] = useState([]);
+  const [unreadAlerts, setUnreadAlerts] = useState(0);
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [savingPhone, setSavingPhone] = useState(false);
+  const [alertNotice, setAlertNotice] = useState('');
 
   // AI Assistant Chat State
   const [chatMessages, setChatMessages] = useState([
@@ -64,6 +69,7 @@ export default function Dashboard({ refreshKey = 0 }) {
       
       if (userRes.data) {
         setUserProfile(userRes.data);
+        setPhoneNumber(userRes.data.phoneNumber || '');
       }
 
       const now = new Date();
@@ -107,6 +113,41 @@ export default function Dashboard({ refreshKey = 0 }) {
 
   const remainingBudget = monthlyBudget - totalExpenses;
   const percentageRemaining = monthlyBudget > 0 ? ((remainingBudget / monthlyBudget) * 100).toFixed(1) : 0;
+
+  useEffect(() => {
+    if (activeTab !== 'alerts') return;
+    axios.get('/alerts').then((response) => {
+      setAlerts(response.data.alerts || []);
+      setUnreadAlerts(response.data.unreadCount || 0);
+    }).catch((err) => {
+      setAlertNotice(err.response?.data?.error || 'Could not load alerts.');
+    });
+  }, [activeTab]);
+
+  const markAlertRead = async (id) => {
+    try {
+      await axios.patch(`/alerts/${id}/read`);
+      setAlerts((prev) => prev.map((alert) => alert._id === id ? { ...alert, readAt: new Date().toISOString() } : alert));
+      setUnreadAlerts((count) => Math.max(0, count - 1));
+    } catch (err) {
+      setAlertNotice(err.response?.data?.error || 'Could not mark alert as read.');
+    }
+  };
+
+  const savePhoneNumber = async (event) => {
+    event.preventDefault();
+    setSavingPhone(true);
+    setAlertNotice('');
+    try {
+      const response = await axios.put('/auth/profile', { phoneNumber });
+      setUserProfile(response.data);
+      setAlertNotice('Phone number saved. SMS alerts will be sent when the SMS provider is configured on the server.');
+    } catch (err) {
+      setAlertNotice(err.response?.data?.error || 'Could not save phone number.');
+    } finally {
+      setSavingPhone(false);
+    }
+  };
 
   // Handle AI Chat Send
   const handleSendAiMessage = async (e) => {
@@ -385,12 +426,28 @@ export default function Dashboard({ refreshKey = 0 }) {
       case 'alerts':
         return (
           <div className="space-y-6">
-            <h2 className="text-xl font-bold text-white">Security & Spending Alerts</h2>
-            <div className="bg-[#111827] border border-slate-800/80 p-6 rounded-2xl text-slate-300 space-y-3">
-              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-300 flex items-center gap-2">
+            <div className="flex items-center justify-between gap-3">
+              <div><h2 className="text-xl font-bold text-white">Security & Spending Alerts</h2><p className="text-xs text-slate-400 mt-1">{unreadAlerts} unread alert{unreadAlerts === 1 ? '' : 's'}</p></div>
+              <span className="text-xs rounded-full px-3 py-1 border border-amber-500/20 bg-amber-500/10 text-amber-300">Large-transaction monitoring</span>
+            </div>
+            {alertNotice && <div className="p-3 rounded-xl border border-indigo-500/20 bg-indigo-500/10 text-sm text-indigo-200">{alertNotice}</div>}
+            <div className="bg-[#111827] border border-slate-800/80 p-5 rounded-2xl">
+              <h3 className="font-bold text-white mb-1">Email and SMS alert settings</h3>
+              <p className="text-xs text-slate-400 mb-4">Email alerts go to your registered email when SMTP is configured. SMS requires Twilio credentials on the backend.</p>
+              <form onSubmit={savePhoneNumber} className="flex flex-col sm:flex-row gap-3">
+                <label className="flex-1 text-xs text-slate-300">Phone number (include country code, e.g. +91…)
+                  <input type="tel" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} placeholder="+91XXXXXXXXXX" className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm text-white" />
+                </label>
+                <button type="submit" disabled={savingPhone} className="self-end rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{savingPhone ? 'Saving…' : 'Save phone number'}</button>
+              </form>
+            </div>
+            <div className="bg-[#111827] border border-slate-800/80 p-5 rounded-2xl">
+              <div className="p-3 mb-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-300 flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 shrink-0" />
-                <span>Budget tracking limit is currently at {percentageRemaining}% remaining capacity.</span>
+                <span>Current budget capacity: {percentageRemaining}% remaining. A large-expense alert is created at ₹10,000 or 30% of your configured monthly budget, whichever threshold is reached first.</span>
               </div>
+              <h3 className="font-bold text-white mb-3">Recent alerts</h3>
+              {alerts.length === 0 ? <p className="text-sm text-slate-400 py-6 text-center">No alerts yet. A warning appears here when a qualifying large expense is recorded.</p> : <div className="space-y-3">{alerts.map(alert => <article key={alert._id} className={`rounded-xl border p-4 ${alert.readAt ? 'border-slate-800 bg-slate-900/40' : 'border-amber-500/30 bg-amber-500/5'}`}><div className="flex items-start justify-between gap-3"><div><div className="flex items-center gap-2"><span className={`text-[10px] uppercase font-bold ${alert.severity === 'critical' ? 'text-rose-300' : 'text-amber-300'}`}>{alert.severity}</span><span className="text-[10px] text-slate-500">{new Date(alert.createdAt).toLocaleString()}</span></div><h4 className="font-semibold text-white mt-1">{alert.title}</h4><p className="text-sm text-slate-300 mt-2">{alert.message}</p></div>{!alert.readAt && <button onClick={() => markAlertRead(alert._id)} className="shrink-0 text-xs text-indigo-300 hover:text-indigo-200">Mark read</button>}</div></article>)}</div>}
             </div>
           </div>
         );
