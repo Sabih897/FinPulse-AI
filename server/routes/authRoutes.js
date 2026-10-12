@@ -81,7 +81,7 @@ router.post('/reset-password', async (req, res) => {
 
 router.put('/profile', protect, async (req, res) => {
   try {
-    const { monthlyBudget, currency, name, phoneNumber } = req.body;
+    const { monthlyBudget, currency, name } = req.body;
     const updates = {};
 
     if (monthlyBudget !== undefined) {
@@ -97,13 +97,6 @@ router.put('/profile', protect, async (req, res) => {
         return res.status(400).json({ error: 'Currency must be a non-empty string.' });
       }
       updates.currency = currency.trim().toUpperCase();
-    }
-
-    if (phoneNumber !== undefined) {
-      if (typeof phoneNumber !== 'string' || (phoneNumber.trim() && !/^\+?[0-9 ()-]{7,20}$/.test(phoneNumber.trim()))) {
-        return res.status(400).json({ error: 'Phone number must be a valid number including country code when possible.' });
-      }
-      updates.phoneNumber = phoneNumber.trim();
     }
 
     if (name !== undefined) {
