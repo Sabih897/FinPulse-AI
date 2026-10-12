@@ -1,22 +1,23 @@
-import nodemailer from 'nodemailer';
-
 export async function sendFinancialAlert({ user, title, message }) {
   const results = { email: 'not_configured', sms: 'not_configured' };
 
-  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS && user?.email) {
+  // Email delivery uses Resend's HTTPS API, avoiding a separate SMTP dependency.
+  if (process.env.RESEND_API_KEY && process.env.ALERT_FROM_EMAIL && user?.email) {
     try {
-      const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: Number(process.env.SMTP_PORT || 587),
-        secure: String(process.env.SMTP_SECURE || 'false') === 'true',
-        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          from: process.env.ALERT_FROM_EMAIL,
+          to: [user.email],
+          subject: `FinPulse AI alert: ${title}`,
+          text: message
+        })
       });
-      await transporter.sendMail({
-        from: process.env.ALERT_FROM_EMAIL || process.env.SMTP_USER,
-        to: user.email,
-        subject: `FinPulse AI alert: ${title}`,
-        text: message
-      });
+      if (!response.ok) throw new Error(`Resend returned HTTP ${response.status}`);
       results.email = 'sent';
     } catch (error) {
       results.email = 'failed';
