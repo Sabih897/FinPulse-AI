@@ -10,6 +10,7 @@ import transactionRoutes from './routes/transactionRoutes.js';
 import aiRoutes from './routes/aiRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import savingsRoutes, { runScheduledSavingsRecommendations } from './routes/savingsRoutes.js';
+import alertRoutes from './routes/alertRoutes.js';
 
 const app = express();
 
@@ -34,6 +35,7 @@ app.use('/api/receipts', receiptRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/savings', savingsRoutes);
+app.use('/api/alerts', alertRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
