@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
-import { Sparkles, TrendingDown, Wallet, PiggyBank, RefreshCw, CheckCircle2, XCircle, Clock3, Lightbulb } from 'lucide-react';
+import { Sparkles, TrendingDown, Wallet, PiggyBank, RefreshCw, CheckCircle2, XCircle, Clock3, Lightbulb, Save, History } from 'lucide-react';
 import axios from '../api/axiosInstance';
 import { formatINR } from '../utils/formatters';
 
@@ -13,6 +13,16 @@ export default function SavingsCoach() {
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const previousMonth = new Date();
+  previousMonth.setDate(1);
+  previousMonth.setMonth(previousMonth.getMonth() - 1);
+  const monthValue = `${previousMonth.getFullYear()}-${String(previousMonth.getMonth() + 1).padStart(2, '0')}`;
+  const [historyForm, setHistoryForm] = useState({
+    month: monthValue, income: '', expenses: '',
+    categories: { Groceries: '', Utilities: '', Dining: '', Transport: '', Shopping: '', Healthcare: '', Entertainment: '', Subscriptions: '', Others: '' },
+    notes: ''
+  });
+  const [historySaving, setHistorySaving] = useState(false);
 
   const loadOverview = useCallback(async () => {
     try {
@@ -51,6 +61,34 @@ export default function SavingsCoach() {
     return () => { alive = false; };
   }, [loadOverview, generateRecommendations]);
 
+  const saveHistory = async (event) => {
+    event.preventDefault();
+    setHistorySaving(true);
+    setNotice('');
+    try {
+      const categories = Object.fromEntries(
+        Object.entries(historyForm.categories)
+          .filter(([, amount]) => amount !== '' && Number(amount) > 0)
+          .map(([name, amount]) => [name, Number(amount)])
+      );
+      const response = await axios.post('/savings/history', {
+        month: historyForm.month,
+        income: Number(historyForm.income || 0),
+        expenses: Number(historyForm.expenses || 0),
+        categories,
+        notes: historyForm.notes
+      });
+      setNotice(response.data.message || 'Historical month saved.');
+      await loadOverview();
+      // Refresh the recommendation list now that historical baseline data exists.
+      await generateRecommendations(false);
+    } catch (err) {
+      setNotice(err.response?.data?.error || 'Could not save historical details.');
+    } finally {
+      setHistorySaving(false);
+    }
+  };
+
   const updateStatus = async (id, status) => {
     try {
       await axios.patch(`/savings/recommendations/${id}/status`, { status });
@@ -77,6 +115,35 @@ export default function SavingsCoach() {
     </div>
     {notice && <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/10 px-4 py-3 text-sm text-indigo-200">{notice}</div>}
     {error && <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{error}</div>}
+
+    <section className={panel}>
+      <div className="flex items-start gap-3 mb-4">
+        <History className="w-5 h-5 text-indigo-300 mt-0.5" />
+        <div><h3 className="font-bold text-white">Add past-month details</h3><p className="text-xs text-slate-400 mt-1">Enter totals for up to the previous five months plus the current month. This helps establish a baseline when you started using FinPulse recently. If a month already has individual transactions, those transactions take priority to prevent double-counting.</p></div>
+      </div>
+      <form onSubmit={saveHistory} className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <label className="text-xs text-slate-300">Month
+            <input type="month" required value={historyForm.month} onChange={e => setHistoryForm(prev => ({ ...prev, month: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
+          </label>
+          <label className="text-xs text-slate-300">Total income (₹)
+            <input type="number" min="0" step="0.01" value={historyForm.income} onChange={e => setHistoryForm(prev => ({ ...prev, income: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
+          </label>
+          <label className="text-xs text-slate-300">Total expenses (₹)
+            <input type="number" min="0" step="0.01" required value={historyForm.expenses} onChange={e => setHistoryForm(prev => ({ ...prev, expenses: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
+          </label>
+        </div>
+        <div><p className="text-xs font-semibold text-slate-300 mb-2">Expense category totals (optional)</p><div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {Object.entries(historyForm.categories).map(([name, amount]) => <label key={name} className="text-xs text-slate-400">{name}
+            <input type="number" min="0" step="0.01" value={amount} onChange={e => setHistoryForm(prev => ({ ...prev, categories: { ...prev.categories, [name]: e.target.value } }))} placeholder="₹0" className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
+          </label>)}
+        </div></div>
+        <label className="block text-xs text-slate-300">Notes (optional)
+          <input value={historyForm.notes} maxLength={500} onChange={e => setHistoryForm(prev => ({ ...prev, notes: e.target.value }))} placeholder="e.g. approximate figures from bank statement" className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
+        </label>
+        <button type="submit" disabled={historySaving} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"><Save className="w-4 h-4" />{historySaving ? 'Saving…' : 'Save month & refresh insights'}</button>
+      </form>
+    </section>
 
     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
       <div className={panel}><div className="flex justify-between text-slate-400 text-xs"><span>Current-month expenses</span><Wallet className="w-4 h-4" /></div><p className="text-2xl font-black text-white mt-3">{money(month.expenses)}</p><p className="text-xs text-slate-500 mt-2">{month.label} · day {month.day} of {month.daysInMonth}</p></div>
