@@ -92,13 +92,22 @@ router.post('/', protect, async (req, res) => {
       }
     }
 
+    const normalizedType = type || 'expense';
+    const normalizedAmount = Number(amount);
+    if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
+      return res.status(400).json({ success: false, error: 'Amount must be a valid number greater than zero.' });
+    }
+    if (!['expense', 'income'].includes(normalizedType)) {
+      return res.status(400).json({ success: false, error: 'Type must be either expense or income.' });
+    }
+
     const txData = {
       userId,
       merchant: merchant.trim(),
-      amount: Number(amount),
+      amount: normalizedAmount,
       category,
       date: validDate,
-      type: type || 'expense',
+      type: normalizedType,
       lineItems: Array.isArray(lineItems) ? lineItems : [],
       receiptImageUrl: receiptImageUrl || null
     };
