@@ -16,7 +16,7 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [transactions, setTransactions] = useState([]);
   const [summary, setSummary] = useState([]);
-  const [userProfile, setUserProfile] = useState({ name: 'Marcus Kim', email: 'marcus@finpulse.ai', monthlyBudget: 50000 });
+  const [userProfile, setUserProfile] = useState({ name: '', email: '', monthlyBudget: 0 });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
@@ -25,7 +25,7 @@ export default function Dashboard() {
 
   // AI Assistant Chat State
   const [chatMessages, setChatMessages] = useState([
-    { role: 'assistant', content: 'Hello Marcus! I am your FinPulse AI financial collaborator. Ask me anything about your current spending habits, budget limits, or recommendations.' }
+    { role: 'assistant', content: 'Hello! I am your FinPulse AI financial assistant. Ask me about your spending, budget, or savings recommendations.' }
   ]);
   const [chatInput, setChatInput] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -50,7 +50,7 @@ export default function Dashboard() {
       const dateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
       const [txRes, userRes] = await Promise.all([
         axios.get('/transactions', { params: { search, category, startDate: dateKey(monthStart), endDate: dateKey(monthEnd), limit: 100 } }),
-        axios.get('/auth/profile').catch(() => ({ data: { name: 'Marcus Kim', email: 'marcus@finpulse.ai', monthlyBudget: 50000 } }))
+        axios.get('/auth/profile').catch(() => ({ data: { name: '', email: '', monthlyBudget: 0 } }))
       ]);
 
       const txArray = txRes.data.transactions || (Array.isArray(txRes.data) ? txRes.data : []);
@@ -103,14 +103,14 @@ export default function Dashboard() {
       const res = await axios.post('/ai/chat', { message: userMsg, transactions, summary }).catch(() => null);
       
       let reply = "";
-      if (res && res.data && res.data.reply) {
-        reply = res.data.reply;
+      if (res && res.data && (res.data.text || res.data.reply)) {
+        reply = res.data.text || res.data.reply;
       } else {
         // Intelligent fallback simulator using actual state data
         if (userMsg.toLowerCase().includes('budget') || userMsg.toLowerCase().includes('spend')) {
           reply = `You have spent ${formatINR(totalExpenses)} out of your ${formatINR(monthlyBudget)} monthly limit. You have ${formatINR(remainingBudget)} remaining (${percentageRemaining}%).`;
         } else if (userMsg.toLowerCase().includes('grocery') || userMsg.toLowerCase().includes('dining')) {
-          const topCat = summary.sort((a,b) => b.value - a.value)[0];
+          const topCat = [...summary].sort((a,b) => b.value - a.value)[0];
           reply = topCat ? `Your highest spending category right now is ${topCat.name} at ${formatINR(topCat.value)}.` : "No major category spikes recorded yet.";
         } else {
           reply = `Based on your live ledger of ${transactions.length} transactions, your accounts are active. Total income recorded is ${formatINR(totalIncome)} and total expenses are ${formatINR(totalExpenses)}.`;
