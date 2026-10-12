@@ -132,23 +132,26 @@ router.post('/', protect, async (req, res) => {
     // of the user's configured monthly budget. Transaction saving must succeed
     // even if email/SMS delivery is not configured or a provider is unavailable.
     if (txData.type === 'expense') {
-      const user = await User.findById(userId).select('name email phoneNumber monthlyBudget').lean();
-      const exceedsBudgetRatio = user?.monthlyBudget > 0 && txData.amount / user.monthlyBudget >= 0.3;
-      const isLargeExpense = txData.amount >= 10000 || exceedsBudgetRatio;
-      if (isLargeExpense) {
-        const severity = txData.amount >= 50000 || (user?.monthlyBudget > 0 && txData.amount >= user.monthlyBudget * 0.75)
-          ? 'critical' : 'warning';
-        const title = severity === 'critical' ? 'Very large transaction detected' : 'Large transaction detected';
-        const reason = user?.monthlyBudget > 0
-          ? `This expense is ${Math.round(txData.amount / user.monthlyBudget * 100)}% of your monthly budget.`
-          : 'This expense meets FinPulse AI’s large-transaction threshold of ₹10,000.';
-        const message = `${txData.merchant}: ₹${txData.amount.toLocaleString('en-IN')} on ${validDate.toISOString().slice(0, 10)}. ${reason} If you do not recognize it, contact your bank promptly.`;
-        alert = await Alert.create({ userId, transactionId: transaction._id, title, message, severity });
-        // Deliver configured email/SMS channels asynchronously from the request's
-        // point of view; provider failures must never roll back the transaction.
-        sendFinancialAlert({ user, title, message }).catch((err) => {
-          console.error('Financial alert delivery failed:', err.message);
-        });
+      try {
+        const user = await User.findById(userId).select('name email phoneNumber monthlyBudget').lean();
+        const exceedsBudgetRatio = user?.monthlyBudget > 0 && txData.amount / user.monthlyBudget >= 0.3;
+        const isLargeExpense = txData.amount >= 10000 || exceedsBudgetRatio;
+        if (isLargeExpense) {
+          const severity = txData.amount >= 50000 || (user?.monthlyBudget > 0 && txData.amount >= user.monthlyBudget * 0.75)
+            ? 'critical' : 'warning';
+          const title = severity === 'critical' ? 'Very large transaction detected' : 'Large transaction detected';
+          const reason = user?.monthlyBudget > 0
+            ? `This expense is ${Math.round(txData.amount / user.monthlyBudget * 100)}% of your monthly budget.`
+            : 'This expense meets FinPulse AI’s large-transaction threshold of ₹10,000.';
+          const message = `${txData.merchant}: ₹${txData.amount.toLocaleString('en-IN')} on ${validDate.toISOString().slice(0, 10)}. ${reason} If you do not recognize it, contact your bank promptly.`;
+          alert = await Alert.create({ userId, transactionId: transaction._id, title, message, severity });
+          sendFinancialAlert({ user, title, message }).catch((err) => {
+            console.error('Financial alert delivery failed:', err.message);
+          });
+        }
+      } catch (alertError) {
+        // A notification failure must not turn a successfully saved transaction into an API error.
+        console.error('Could not create/deliver large transaction alert:', alertError.message);
       }
     }
 
