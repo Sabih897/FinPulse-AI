@@ -53,7 +53,7 @@ Provide precise, actionable financial guidance. Keep answers concise, clear, and
 `;
 
   const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash', // Updated to the active frontier flash model
+      model: 'gemini-3.8-flash', // Use the currently available Flash model
       contents: [
         { role: 'user', parts: [{ text: `${systemContext}\n\nUser Query: ${message}` }] }
       ]
