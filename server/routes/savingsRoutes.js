@@ -3,6 +3,7 @@ import { GoogleGenAI } from '@google/genai';
 import Transaction from '../models/Transaction.js';
 import SavingsRecommendation from '../models/SavingsRecommendation.js';
 import User from '../models/User.js';
+import HistoricalMonth from '../models/HistoricalMonth.js';
 import { protect } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -54,6 +55,15 @@ async function makeRecommendations(userId) {
   const start = monthStart(previous[2].year, previous[2].month);
   const txs = await Transaction.find({ userId, date: { $gte: start, $lt: new Date(now.getTime() + 1) } })
     .select('amount category date type').lean();
+  const historyStart = monthStart(previous[2].year, previous[2].month);
+  const historicalMonths = await HistoricalMonth.find({
+    userId, month: { $gte: key(previous[2].year, previous[2].month), $lte: key(year, month) }
+  }).lean();
+  const transactionMonths = new Set(txs.map(tx => {
+    const p = partsInIndia(new Date(tx.date));
+    return key(p.year, p.month);
+  }));
+  const historicalByMonth = new Map(historicalMonths.map(item => [item.month, item]));
   const stats = {};
   for (const tx of txs) {
     if (tx.type !== 'expense') continue;
@@ -70,14 +80,27 @@ async function makeRecommendations(userId) {
     const baseline = s.prior.reduce((a, b) => a + b, 0) / 3;
     const projected = day ? s.current / day * new Date(monthStart(following.year, following.month).getTime() - monthStart(year, month).getTime()).getTime() / 86400000 : 0;
     return { category, baseline: Math.round(baseline), current: Math.round(s.current), projected: Math.round(projected), excess: Math.round(projected - baseline) };
-  }).filter(c => c.baseline > 0 && c.excess > Math.max(300, c.baseline * 0.1)).sort((a, b) => b.excess - a.excess).slice(0, 3);
+  });
+  // Use manually entered month summaries as a baseline only where there are no
+  // individual transactions for that month, avoiding double-counting imported data.
+  for (const item of historicalMonths) {
+    if (transactionMonths.has(item.month)) continue;
+    const [histYear, histMonth] = item.month.split('-').map(Number);
+    const priorIndex = previous.findIndex(m => m.year === histYear && m.month === histMonth);
+    for (const [category, amount] of Object.entries(item.categories || {})) {
+      stats[category] ||= { current: 0, prior: [0, 0, 0] };
+      if (histYear === year && histMonth === month) stats[category].current = Number(amount || 0);
+      else if (priorIndex >= 0) stats[category].prior[priorIndex] = Number(amount || 0);
+    }
+  }
+  const actionable = candidates.filter(c => c.baseline > 0 && c.excess > Math.max(300, c.baseline * 0.1)).sort((a, b) => b.excess - a.excess).slice(0, 3);
 
-  if (!candidates.length) return { created: [], due: false };
+  if (!actionable.length) return { created: [], due: false };
   let advice = [];
   if (process.env.GEMINI_API_KEY) {
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const prompt = `Return ONLY a JSON array of up to 3 expense coaching objects. Use only these categories and exact baseline numbers. Fields: category, title, description, action, targetMonthlyAmount. Make realistic suggestions, don't recommend cutting necessary healthcare. Data: ${JSON.stringify(candidates)}`;
+      const prompt = `Return ONLY a JSON array of up to 3 expense coaching objects. Use only these categories and exact baseline numbers. Fields: category, title, description, action, targetMonthlyAmount. Make realistic suggestions, don't recommend cutting necessary healthcare. Data: ${JSON.stringify(actionable)}`;
       const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
       const raw = String(response.text || '').replace(/^```json/i, '').replace(/```$/i, '').trim();
       const parsed = JSON.parse(raw);
@@ -88,7 +111,7 @@ async function makeRecommendations(userId) {
   }
 
   const created = [];
-  for (const c of candidates) {
+  for (const c of actionable) {
     const rec = advice.find(a => a.category === c.category) || {};
     const target = Math.max(0, Math.min(c.baseline, Number(rec.targetMonthlyAmount) || Math.round(c.baseline * 0.9)));
     created.push(await SavingsRecommendation.create({
@@ -103,6 +126,51 @@ async function makeRecommendations(userId) {
   return { created, due: false };
 }
 
+router.post('/history', protect, async (req, res) => {
+  try {
+    const { month, income = 0, expenses = 0, categories = {}, notes = '' } = req.body;
+    if (typeof month !== 'string' || !/^\\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+      return res.status(400).json({ success: false, error: 'Month must use YYYY-MM format.' });
+    }
+    const [year, monthNumber] = month.split('-').map(Number);
+    const nowParts = partsInIndia(new Date());
+    const currentIndex = nowParts.year * 12 + nowParts.month;
+    const requestedIndex = year * 12 + monthNumber;
+    if (requestedIndex < currentIndex - 5 || requestedIndex > currentIndex) {
+      return res.status(400).json({ success: false, error: 'You can enter history only for the current month and previous five months.' });
+    }
+    const normalizedIncome = Number(income);
+    const normalizedExpenses = Number(expenses);
+    if (![normalizedIncome, normalizedExpenses].every(v => Number.isFinite(v) && v >= 0)) {
+      return res.status(400).json({ success: false, error: 'Income and expenses must be non-negative numbers.' });
+    }
+    if (!categories || typeof categories !== 'object' || Array.isArray(categories)) {
+      return res.status(400).json({ success: false, error: 'Categories must be an object of category names and amounts.' });
+    }
+    const normalizedCategories = {};
+    for (const [name, value] of Object.entries(categories)) {
+      const amount = Number(value);
+      if (!name.trim() || !Number.isFinite(amount) || amount < 0) {
+        return res.status(400).json({ success: false, error: 'Every category needs a name and a non-negative amount.' });
+      }
+      normalizedCategories[name.trim()] = amount;
+    }
+    const categoryTotal = Object.values(normalizedCategories).reduce((sum, value) => sum + value, 0);
+    if (categoryTotal > normalizedExpenses + 0.01) {
+      return res.status(400).json({ success: false, error: 'Category totals cannot exceed total monthly expenses.' });
+    }
+    const record = await HistoricalMonth.findOneAndUpdate(
+      { userId: req.user.id, month },
+      { $set: { income: normalizedIncome, expenses: normalizedExpenses, categories: normalizedCategories, notes: String(notes || '').slice(0, 500) } },
+      { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
+    );
+    return res.status(200).json({ success: true, history: record, message: 'Historical month saved.' });
+  } catch (error) {
+    console.error('Save historical month error:', error);
+    return res.status(500).json({ success: false, error: 'Unable to save historical month.' });
+  }
+});
+
 router.get('/overview', protect, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -115,6 +183,10 @@ router.get('/overview', protect, async (req, res) => {
     const txs = await Transaction.find({ userId, date: { $gte: historyStart, $lt: currentEnd } })
       .select('amount category date type').sort({ date: 1 }).lean();
 
+    const historicalMonths = await HistoricalMonth.find({
+      userId, month: { $gte: key(oldest.year, oldest.month), $lte: key(year, month) }
+    }).lean();
+    const historicalByMonth = new Map(historicalMonths.map(item => [item.month, item]));
     const months = [];
     for (let offset = -5; offset <= 0; offset++) {
       const m = shiftMonth(year, month, offset);
@@ -122,12 +194,19 @@ router.get('/overview', protect, async (req, res) => {
         const p = partsInIndia(new Date(tx.date));
         return p.year === m.year && p.month === m.month;
       });
+      const monthKey = key(m.year, m.month);
+      const hasTransactions = monthTxs.length > 0;
+      const historical = historicalByMonth.get(monthKey);
+      const monthCategories = hasTransactions
+        ? categories(monthTxs)
+        : historical ? Object.fromEntries(historical.categories || []) : {};
       months.push({
-        key: key(m.year, m.month),
+        key: monthKey,
         label: new Intl.DateTimeFormat('en-IN', { month: 'short', year: '2-digit', timeZone: TZ }).format(monthStart(m.year, m.month)),
-        expenses: total(monthTxs, 'expense'),
-        income: total(monthTxs, 'income'),
-        categories: categories(monthTxs)
+        expenses: hasTransactions ? total(monthTxs, 'expense') : Number(historical?.expenses || 0),
+        income: hasTransactions ? total(monthTxs, 'income') : Number(historical?.income || 0),
+        categories: monthCategories,
+        source: hasTransactions ? 'transactions' : historical ? 'manual' : 'empty'
       });
     }
 
