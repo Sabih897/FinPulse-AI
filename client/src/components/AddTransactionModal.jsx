@@ -55,10 +55,14 @@ export default function AddTransactionModal({ isOpen, onClose, onTransactionAdde
     try {
       await axios.post('/transactions', {
         ...formData,
-        amount: Number(formData.amount)
+        amount: Number(formData.amount),
+        type: formData.type,
+        category: formData.category,
+        date: new Date(`${formData.date}T12:00:00+05:30`).toISOString()
       });
       
       onTransactionAdded(); // Refresh dashboard data
+      setFormData({ merchant: '', amount: '', type: 'expense', category: 'Groceries', date: new Date().toISOString().split('T')[0] });
       onClose(); // Close modal
     } catch (err) {
       console.error('Error adding transaction:', err);
