@@ -129,7 +129,7 @@ async function makeRecommendations(userId) {
 router.post('/history', protect, async (req, res) => {
   try {
     const { month, income = 0, expenses = 0, categories = {}, notes = '' } = req.body;
-    if (typeof month !== 'string' || !/^\\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+    if (typeof month !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
       return res.status(400).json({ success: false, error: 'Month must use YYYY-MM format.' });
     }
     const [year, monthNumber] = month.split('-').map(Number);
