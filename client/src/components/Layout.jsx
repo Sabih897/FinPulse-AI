@@ -7,11 +7,11 @@ export default function Layout({ children, userProfile, activeTab, setActiveTab 
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, section: 'Overview' },
     { id: 'analytics', label: 'Analytics', icon: BarChart3, section: 'Overview' },
     { id: 'savings', label: 'Savings Coach', icon: PiggyBank, section: 'Overview' },
-    { id: 'transactions', label: 'Transactions', icon: Receipt, section: 'Finance', badge: '3' },
+    { id: 'transactions', label: 'Transactions', icon: Receipt, section: 'Finance' },
     { id: 'budgets', label: 'Budgets', icon: Wallet, section: 'Finance' },
     { id: 'reports', label: 'Reports', icon: FileText, section: 'Finance' },
     { id: 'assistant', label: 'AI Assistant', icon: Bot, section: 'Tools' },
-    { id: 'alerts', label: 'Alerts', icon: Bell, section: 'Tools', badge: '2' },
+    { id: 'alerts', label: 'Alerts', icon: Bell, section: 'Tools' },
   ];
 
   return (
@@ -106,11 +106,11 @@ export default function Layout({ children, userProfile, activeTab, setActiveTab 
         <div className="p-4 border-t border-slate-800/80 bg-[#0B0F19]/50 flex items-center justify-between">
           <div className="flex items-center gap-3 overflow-hidden">
             <div className="w-9 h-9 rounded-xl bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 flex items-center justify-center font-bold text-xs shrink-0">
-              {userProfile?.name ? userProfile.name.substring(0, 2).toUpperCase() : 'MK'}
+              {userProfile?.name ? userProfile.name.substring(0, 2).toUpperCase() : 'FP'}
             </div>
             <div className="truncate">
-              <p className="text-xs font-bold text-white truncate">{userProfile?.name || 'Marcus Kim'}</p>
-              <p className="text-[11px] text-slate-400 truncate">{userProfile?.email || 'marcus@finpulse.ai'}</p>
+              <p className="text-xs font-bold text-white truncate">{userProfile?.name || 'Your account'}</p>
+              <p className="text-[11px] text-slate-400 truncate">{userProfile?.email || 'Account profile'}</p>
             </div>
           </div>
           <button onClick={() => alert('Logged out successfully')} className="text-slate-400 hover:text-rose-400 transition p-1">
