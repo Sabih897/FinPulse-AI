@@ -199,7 +199,7 @@ router.get('/overview', protect, async (req, res) => {
       const historical = historicalByMonth.get(monthKey);
       const monthCategories = hasTransactions
         ? categories(monthTxs)
-        : historical ? Object.fromEntries(historical.categories || []) : {};
+        : historical ? (historical.categories instanceof Map ? Object.fromEntries(historical.categories) : (historical.categories || {})) : {};
       months.push({
         key: monthKey,
         label: new Intl.DateTimeFormat('en-IN', { month: 'short', year: '2-digit', timeZone: TZ }).format(monthStart(m.year, m.month)),
