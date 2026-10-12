@@ -1,11 +1,12 @@
 // client/src/components/Layout.jsx
 import React from 'react';
-import { LayoutDashboard, BarChart3, Receipt, Wallet, FileText, Bot, Bell, Settings, LogOut, Sparkles } from 'lucide-react';
+import { LayoutDashboard, BarChart3, Receipt, Wallet, FileText, Bot, Bell, Settings, LogOut, Sparkles, PiggyBank } from 'lucide-react';
 
 export default function Layout({ children, userProfile, activeTab, setActiveTab }) {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, section: 'Overview' },
     { id: 'analytics', label: 'Analytics', icon: BarChart3, section: 'Overview' },
+    { id: 'savings', label: 'Savings Coach', icon: PiggyBank, section: 'Overview' },
     { id: 'transactions', label: 'Transactions', icon: Receipt, section: 'Finance', badge: '3' },
     { id: 'budgets', label: 'Budgets', icon: Wallet, section: 'Finance' },
     { id: 'reports', label: 'Reports', icon: FileText, section: 'Finance' },

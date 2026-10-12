@@ -8,6 +8,7 @@ import { formatINR } from '../utils/formatters';
 import AddTransactionModal from './AddTransactionModal';
 import EditBudgetModal from './EditBudgetModal';
 import Layout from './Layout';
+import SavingsCoach from './SavingsCoach';
 
 const COLORS = ['#6366F1', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
 
@@ -43,8 +44,12 @@ export default function Dashboard() {
   const fetchData = async () => {
     try {
       setLoading(true);
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      const dateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
       const [txRes, userRes] = await Promise.all([
-        axios.get('/transactions', { params: { search, category } }),
+        axios.get('/transactions', { params: { search, category, startDate: dateKey(monthStart), endDate: dateKey(monthEnd), limit: 100 } }),
         axios.get('/auth/profile').catch(() => ({ data: { name: 'Marcus Kim', email: 'marcus@finpulse.ai', monthlyBudget: 50000 } }))
       ]);
 
@@ -123,6 +128,9 @@ export default function Dashboard() {
   // Render different views depending on active sidebar tab
   const renderContent = () => {
     switch (activeTab) {
+      case 'savings':
+        return <SavingsCoach />;
+
       case 'analytics':
         return (
           <div className="space-y-6">
