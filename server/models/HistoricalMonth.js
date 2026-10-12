@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 
 const historicalMonthSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-  month: { type: String, required: true, match: /^\\d{4}-\\d{2}$/ },
+  month: { type: String, required: true, match: /^\d{4}-\d{2}$/ },
   income: { type: Number, default: 0, min: 0 },
   expenses: { type: Number, default: 0, min: 0 },
   categories: { type: Map, of: Number, default: {} },
