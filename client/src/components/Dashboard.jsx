@@ -12,7 +12,7 @@ import SavingsCoach from './SavingsCoach';
 
 const COLORS = ['#6366F1', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
 
-export default function Dashboard() {
+export default function Dashboard({ refreshKey = 0 }) {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [transactions, setTransactions] = useState([]);
   const [summary, setSummary] = useState([]);
@@ -33,7 +33,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchData();
-  }, [search, category]);
+  }, [search, category, refreshKey]);
 
   useEffect(() => {
     if (activeTab === 'assistant') {
@@ -44,12 +44,8 @@ export default function Dashboard() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const now = new Date();
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      const dateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
       const [txRes, userRes] = await Promise.all([
-        axios.get('/transactions', { params: { search, category, startDate: dateKey(monthStart), endDate: dateKey(monthEnd), limit: 100 } }),
+        axios.get('/transactions', { params: { search, category, limit: 100 } }),
         axios.get('/auth/profile').catch(() => ({ data: { name: '', email: '', monthlyBudget: 0 } }))
       ]);
 
@@ -60,8 +56,15 @@ export default function Dashboard() {
         setUserProfile(userRes.data);
       }
 
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      const currentMonthTransactions = txArray.filter((t) => {
+        const date = new Date(t.date);
+        return date >= monthStart && date < nextMonthStart;
+      });
       const catMap = {};
-      txArray.forEach((t) => {
+      currentMonthTransactions.forEach((t) => {
         if (t.type === 'expense') {
           const amt = Number(t.amount || 0);
           catMap[t.category] = (catMap[t.category] || 0) + amt;
@@ -77,11 +80,18 @@ export default function Dashboard() {
     }
   };
 
-  const monthlyBudget = Number(userProfile.monthlyBudget || 50000);
-  const totalExpenses = transactions
+  const monthlyBudget = Number(userProfile.monthlyBudget ?? 0);
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const currentMonthTransactions = transactions.filter((t) => {
+    const date = new Date(t.date);
+    return date >= monthStart && date < nextMonthStart;
+  });
+  const totalExpenses = currentMonthTransactions
     .filter(t => t.type === 'expense')
     .reduce((acc, t) => acc + Number(t.amount || 0), 0);
-  const totalIncome = transactions
+  const totalIncome = currentMonthTransactions
     .filter(t => t.type === 'income')
     .reduce((acc, t) => acc + Number(t.amount || 0), 0);
 
