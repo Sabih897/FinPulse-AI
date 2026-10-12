@@ -76,11 +76,6 @@ async function makeRecommendations(userId) {
       if (i >= 0) stats[category].prior[i] += Number(tx.amount || 0);
     }
   }
-  const candidates = Object.entries(stats).map(([category, s]) => {
-    const baseline = s.prior.reduce((a, b) => a + b, 0) / 3;
-    const projected = day ? s.current / day * new Date(monthStart(following.year, following.month).getTime() - monthStart(year, month).getTime()).getTime() / 86400000 : 0;
-    return { category, baseline: Math.round(baseline), current: Math.round(s.current), projected: Math.round(projected), excess: Math.round(projected - baseline) };
-  });
   // Use manually entered month summaries as a baseline only where there are no
   // individual transactions for that month, avoiding double-counting imported data.
   for (const item of historicalMonths) {
@@ -93,6 +88,11 @@ async function makeRecommendations(userId) {
       else if (priorIndex >= 0) stats[category].prior[priorIndex] = Number(amount || 0);
     }
   }
+  const candidates = Object.entries(stats).map(([category, s]) => {
+    const baseline = s.prior.reduce((a, b) => a + b, 0) / 3;
+    const projected = day ? s.current / day * (monthStart(following.year, following.month).getTime() - monthStart(year, month).getTime()) / 86400000 : 0;
+    return { category, baseline: Math.round(baseline), current: Math.round(s.current), projected: Math.round(projected), excess: Math.round(projected - baseline) };
+  });
   const actionable = candidates.filter(c => c.baseline > 0 && c.excess > Math.max(300, c.baseline * 0.1)).sort((a, b) => b.excess - a.excess).slice(0, 3);
 
   if (!actionable.length) return { created: [], due: false };
