@@ -1,4 +1,5 @@
 // server/server.js
+import './utils/network.js'; // Configure resilient outbound HTTPS before route handlers load.
 import dotenv from 'dotenv';
 dotenv.config(); // Must be at the very top line!
 
