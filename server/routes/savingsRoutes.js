@@ -59,7 +59,7 @@ async function makeRecommendations(userId) {
   const historicalMonths = await HistoricalMonth.find({
     userId, month: { $gte: key(previous[2].year, previous[2].month), $lte: key(year, month) }
   }).lean();
-  const transactionMonths = new Set(txs.map(tx => {
+  const transactionMonths = new Set(txs.filter(tx => tx.type === 'expense').map(tx => {
     const p = partsInIndia(new Date(tx.date));
     return key(p.year, p.month);
   }));
@@ -195,18 +195,19 @@ router.get('/overview', protect, async (req, res) => {
         return p.year === m.year && p.month === m.month;
       });
       const monthKey = key(m.year, m.month);
-      const hasTransactions = monthTxs.length > 0;
+      const hasExpenseTransactions = monthTxs.some(tx => tx.type === 'expense');
+      const hasIncomeTransactions = monthTxs.some(tx => tx.type === 'income');
       const historical = historicalByMonth.get(monthKey);
-      const monthCategories = hasTransactions
+      const monthCategories = hasExpenseTransactions
         ? categories(monthTxs)
         : historical ? (historical.categories instanceof Map ? Object.fromEntries(historical.categories) : (historical.categories || {})) : {};
       months.push({
         key: monthKey,
         label: new Intl.DateTimeFormat('en-IN', { month: 'short', year: '2-digit', timeZone: TZ }).format(monthStart(m.year, m.month)),
-        expenses: hasTransactions ? total(monthTxs, 'expense') : Number(historical?.expenses || 0),
-        income: hasTransactions ? total(monthTxs, 'income') : Number(historical?.income || 0),
+        expenses: hasExpenseTransactions ? total(monthTxs, 'expense') : Number(historical?.expenses || 0),
+        income: hasIncomeTransactions ? total(monthTxs, 'income') : Number(historical?.income || 0),
         categories: monthCategories,
-        source: hasTransactions ? 'transactions' : historical ? 'manual' : 'empty'
+        source: hasExpenseTransactions || hasIncomeTransactions ? 'transactions' : historical ? 'manual' : 'empty'
       });
     }
 
