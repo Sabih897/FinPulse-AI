@@ -71,13 +71,17 @@ export default function ReceiptScanner({ onTransactionSaved }) {
 
       const payload = {
         merchant: scannedData.merchant ? scannedData.merchant.trim() : 'Unknown Merchant',
-        amount: Number(scannedData.amount) || 0,
+        amount: Number(scannedData.amount),
         date: parsedDate.toISOString(),
-        category: scannedData.category || 'Groceries',
+        category: scannedData.category || 'Others',
         type: 'expense',
         lineItems: scannedData.lineItems || []
       };
 
+      if (!payload.merchant || !Number.isFinite(payload.amount) || payload.amount <= 0) {
+        setError('Please verify the merchant and enter a valid receipt amount greater than zero.');
+        return;
+      }
       const res = await axios.post('/transactions', payload);
 
       if (res.data.success || res.status === 201) {
