@@ -33,24 +33,9 @@ router.post('/scan-receipt', protect, upload.single('receipt'), async (req, res)
     const imageBase64 = req.file.buffer.toString('base64');
     const mimeType = req.file.mimetype || 'image/jpeg';
 
-    let candidateModels = [...DEFAULT_CANDIDATES];
-
-    // Dynamically retrieve active generateContent models available to your key
-    try {
-      const listPager = await ai.models.list();
-      const dynamicModels = [];
-      for await (const m of listPager) {
-        if (m.supportedActions?.includes('generateContent') || m.supportedGenerationMethods?.includes('generateContent')) {
-          const cleanName = m.name.replace(/^models\//, '');
-          dynamicModels.push(cleanName);
-        }
-      }
-      if (dynamicModels.length > 0) {
-        candidateModels = dynamicModels;
-      }
-    } catch (listErr) {
-      console.warn("Could not list models dynamically, falling back to defaults:", listErr.message);
-    }
+    // Use a short, verified fallback list. Listing every generateContent model also
+    // includes text-to-speech models that cannot accept receipt images.
+    const candidateModels = [...DEFAULT_CANDIDATES];
 
     let response = null;
     let lastError = null;
