@@ -101,7 +101,7 @@ async function makeRecommendations(userId) {
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const prompt = `Return ONLY a JSON array of up to 3 expense coaching objects. Use only these categories and exact baseline numbers. Fields: category, title, description, action, targetMonthlyAmount. Make realistic suggestions, don't recommend cutting necessary healthcare. Data: ${JSON.stringify(actionable)}`;
-      const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+      const response = await ai.models.generateContent({ model: 'gemini-3.8-flash', contents: prompt });
       const raw = String(response.text || '').replace(/^```json/i, '').replace(/```$/i, '').trim();
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) advice = parsed;
