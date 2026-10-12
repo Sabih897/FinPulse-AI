@@ -13,9 +13,8 @@ const upload = multer({
 
 // Primary fallback list if listing fails
 const DEFAULT_CANDIDATES = [
-  'gemini-3.5-flash',
-  'gemini-3.6-flash',
-  'gemini-2.5-flash'
+  'gemini-3.8-flash',
+  'gemma-4-26b-a4b-it'
 ];
 
 router.post('/scan-receipt', protect, upload.single('receipt'), async (req, res) => {
