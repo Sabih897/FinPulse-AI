@@ -13,6 +13,7 @@ function App() {
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
+  const [transactionRefreshKey, setTransactionRefreshKey] = useState(0);
 
   useEffect(() => {
     const storedToken = localStorage.getItem('token');
@@ -81,7 +82,7 @@ function App() {
         <main className="flex-1">
           {token && showScanner && (
             <div className="max-w-7xl mx-auto p-6 flex justify-center">
-              <ReceiptScanner onTransactionSaved={() => setShowScanner(false)} />
+              <ReceiptScanner onTransactionSaved={() => { setShowScanner(false); setTransactionRefreshKey((key) => key + 1); }} />
             </div>
           )}
 
@@ -99,7 +100,7 @@ function App() {
             {/* Protected Routes */}
             <Route 
               path="/" 
-              element={token ? <Dashboard /> : <Navigate to="/login" />} 
+              element={token ? <Dashboard refreshKey={transactionRefreshKey} /> : <Navigate to="/login" />} 
             />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
