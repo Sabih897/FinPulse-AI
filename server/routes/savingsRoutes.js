@@ -2,6 +2,7 @@ import express from 'express';
 import { GoogleGenAI } from '@google/genai';
 import Transaction from '../models/Transaction.js';
 import SavingsRecommendation from '../models/SavingsRecommendation.js';
+import User from '../models/User.js';
 import { protect } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -204,5 +205,16 @@ router.patch('/recommendations/:id/status', protect, async (req, res) => {
     res.status(500).json({ success: false, error: 'Unable to update recommendation.' });
   }
 });
+
+export async function runScheduledSavingsRecommendations() {
+  const users = await User.find({}).select('_id').lean();
+  for (const user of users) {
+    try {
+      await makeRecommendations(user._id);
+    } catch (error) {
+      console.error('Scheduled savings recommendation failed for a user:', error.message);
+    }
+  }
+}
 
 export default router;

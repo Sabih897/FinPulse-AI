@@ -9,7 +9,7 @@ import receiptRoutes from './routes/receiptRoutes.js';
 import transactionRoutes from './routes/transactionRoutes.js';
 import aiRoutes from './routes/aiRoutes.js';
 import authRoutes from './routes/authRoutes.js';
-import savingsRoutes from './routes/savingsRoutes.js';
+import savingsRoutes, { runScheduledSavingsRecommendations } from './routes/savingsRoutes.js';
 
 const app = express();
 
@@ -18,7 +18,14 @@ app.use(express.json());
 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/finpulse')
-  .then(() => console.log('MongoDB Connected successfully'))
+  .then(() => {
+    console.log('MongoDB Connected successfully');
+    // Daily sweep; per-user cooldown prevents recommendations more often than every 3 days.
+    runScheduledSavingsRecommendations().catch((err) => console.error('Initial savings sweep failed:', err.message));
+    setInterval(() => {
+      runScheduledSavingsRecommendations().catch((err) => console.error('Scheduled savings sweep failed:', err.message));
+    }, 24 * 60 * 60 * 1000);
+  })
   .catch((err) => console.error('MongoDB Connection Error:', err));
 
 // Mount routers
