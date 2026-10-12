@@ -1,7 +1,7 @@
 // client/src/components/Dashboard.jsx
 import React, { useEffect, useState, useRef } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { ShieldAlert, CheckCircle, Search, Download, Wallet, AlertCircle, Plus, Sparkles, TrendingUp, Edit3, Send, Bot, User, ArrowUpRight, ArrowDownRight, X } from 'lucide-react';
+import { ShieldAlert, CheckCircle, Search, Download, Wallet, AlertCircle, Plus, Sparkles, TrendingUp, Edit3, Send, Bot, User, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import axios from '../api/axiosInstance';
 import { exportTransactionsToCSV } from '../utils/exportCSV';
 import { formatINR } from '../utils/formatters';
@@ -24,9 +24,6 @@ export default function Dashboard({ refreshKey = 0 }) {
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
   const [alerts, setAlerts] = useState([]);
   const [unreadAlerts, setUnreadAlerts] = useState(0);
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [savingPhone, setSavingPhone] = useState(false);
-  const [phoneModalOpen, setPhoneModalOpen] = useState(false);
   const [alertNotice, setAlertNotice] = useState('');
 
   // AI Assistant Chat State
@@ -70,7 +67,6 @@ export default function Dashboard({ refreshKey = 0 }) {
       
       if (userRes.data) {
         setUserProfile(userRes.data);
-        setPhoneNumber(userRes.data.phoneNumber || '');
       }
 
       const now = new Date();
@@ -132,23 +128,6 @@ export default function Dashboard({ refreshKey = 0 }) {
       setUnreadAlerts((count) => Math.max(0, count - 1));
     } catch (err) {
       setAlertNotice(err.response?.data?.error || 'Could not mark alert as read.');
-    }
-  };
-
-  const savePhoneNumber = async (event) => {
-    event.preventDefault();
-    setSavingPhone(true);
-    setAlertNotice('');
-    try {
-      const response = await axios.put('/auth/profile', { phoneNumber });
-      setUserProfile(response.data);
-      setPhoneNumber(response.data.phoneNumber || '');
-      setPhoneModalOpen(false);
-      setAlertNotice('Phone number updated. New qualifying expenses can trigger SMS when Twilio is configured correctly.');
-    } catch (err) {
-      setAlertNotice(err.response?.data?.error || 'Could not save phone number.');
-    } finally {
-      setSavingPhone(false);
     }
   };
 
@@ -435,22 +414,8 @@ export default function Dashboard({ refreshKey = 0 }) {
             </div>
             {alertNotice && <div className="p-3 rounded-xl border border-indigo-500/20 bg-indigo-500/10 text-sm text-indigo-200">{alertNotice}</div>}
             <div className="bg-[#111827] border border-slate-800/80 p-5 rounded-2xl">
-              <h3 className="font-bold text-white mb-2">Email and SMS alerts</h3>
-              <p className="text-xs text-slate-400 mb-4">Email uses Resend; SMS uses Twilio. Both providers must be configured on the backend. Adding a phone number alone does not activate SMS.</p>
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="text-sm text-slate-300">{phoneNumber ? <><span className="text-emerald-300">Phone saved</span><span className="ml-2 text-slate-400">{phoneNumber}</span></> : <span className="text-amber-300">No phone number added</span>}</div>
-                <button type="button" onClick={() => setPhoneModalOpen(true)} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500">{phoneNumber ? 'Update phone number' : 'Add phone number'}</button>
-              </div>
-              {phoneModalOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="phone-modal-title">
-                <form onSubmit={savePhoneNumber} className="w-full max-w-md rounded-2xl border border-slate-700 bg-[#111827] p-6 shadow-2xl">
-                  <div className="mb-4 flex items-center justify-between"><h3 id="phone-modal-title" className="text-lg font-bold text-white">{phoneNumber ? 'Update phone number' : 'Add phone number'}</h3><button type="button" aria-label="Close" onClick={() => setPhoneModalOpen(false)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-800"><X className="h-5 w-5" /></button></div>
-                  <label className="block text-sm text-slate-300">Phone number with country code
-                    <input autoFocus type="tel" required value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} placeholder="+919876543210" pattern="\\+?[0-9 ()-]{7,20}" className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-3 text-sm text-white" />
-                  </label>
-                  <p className="mt-2 text-xs text-slate-500">Example: +919876543210. Use a number that can receive SMS.</p>
-                  <div className="mt-5 flex justify-end gap-3"><button type="button" onClick={() => setPhoneModalOpen(false)} className="rounded-xl border border-slate-700 px-4 py-2.5 text-sm text-slate-300">Cancel</button><button type="submit" disabled={savingPhone} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{savingPhone ? 'Saving…' : phoneNumber ? 'Update number' : 'Save number'}</button></div>
-                </form>
-              </div>}
+              <h3 className="font-bold text-white mb-2">Email alerts</h3>
+              <p className="text-xs text-slate-400">Large-expense alerts are sent to your account email when email notifications are configured.</p>
             </div>
             <div className="bg-[#111827] border border-slate-800/80 p-5 rounded-2xl">
               <div className="p-3 mb-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-300 flex items-center gap-2">
