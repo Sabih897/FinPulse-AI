@@ -43,7 +43,7 @@ router.post('/chat', protect, async (req, res) => {
     const systemContext = `
 You are FinPulse AI, an expert financial advisor. Analyze the following 90-day financial summary for ${user?.name || 'User'}:
 - Preferred Currency: ${user?.currency || 'INR'}
-- Monthly Budget Target: ${user?.monthlyBudget || 25000}
+- Monthly Budget Target: ${user?.monthlyBudget ?? 0}
 - Total 90-Day Income: ${totalIncome}
 - Total 90-Day Expenses: ${totalExpense}
 - Breakdown by Category: ${JSON.stringify(categoryTotals)}
@@ -53,7 +53,7 @@ Provide precise, actionable financial guidance. Keep answers concise, clear, and
 `;
 
   const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash', // Updated to the active frontier flash model
+      model: 'gemini-3.8-flash', // Use the currently available Flash model
       contents: [
         { role: 'user', parts: [{ text: `${systemContext}\n\nUser Query: ${message}` }] }
       ]

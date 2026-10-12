@@ -4,12 +4,12 @@ import axios from '../api/axiosInstance';
 import { X, Sliders } from 'lucide-react';
 
 export default function EditBudgetModal({ isOpen, onClose, currentBudget, onBudgetUpdated }) {
-  const [budget, setBudget] = useState(currentBudget || 50000);
+  const [budget, setBudget] = useState(currentBudget ?? 0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    setBudget(currentBudget || 50000);
+    setBudget(currentBudget ?? 0);
   }, [currentBudget]);
 
   if (!isOpen) return null;

@@ -8,23 +8,27 @@ import { formatINR } from '../utils/formatters';
 import AddTransactionModal from './AddTransactionModal';
 import EditBudgetModal from './EditBudgetModal';
 import Layout from './Layout';
+import SavingsCoach from './SavingsCoach';
 
 const COLORS = ['#6366F1', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
 
-export default function Dashboard() {
+export default function Dashboard({ refreshKey = 0 }) {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [transactions, setTransactions] = useState([]);
   const [summary, setSummary] = useState([]);
-  const [userProfile, setUserProfile] = useState({ name: 'Marcus Kim', email: 'marcus@finpulse.ai', monthlyBudget: 50000 });
+  const [userProfile, setUserProfile] = useState({ name: '', email: '', monthlyBudget: 0 });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
+  const [alerts, setAlerts] = useState([]);
+  const [unreadAlerts, setUnreadAlerts] = useState(0);
+  const [alertNotice, setAlertNotice] = useState('');
 
   // AI Assistant Chat State
   const [chatMessages, setChatMessages] = useState([
-    { role: 'assistant', content: 'Hello Marcus! I am your FinPulse AI financial collaborator. Ask me anything about your current spending habits, budget limits, or recommendations.' }
+    { role: 'assistant', content: 'Hello! I am your FinPulse AI financial assistant. Ask me about your spending, budget, or savings recommendations.' }
   ]);
   const [chatInput, setChatInput] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -32,7 +36,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchData();
-  }, [search, category]);
+  }, [search, category, refreshKey]);
 
   useEffect(() => {
     if (activeTab === 'assistant') {
@@ -44,19 +48,36 @@ export default function Dashboard() {
     try {
       setLoading(true);
       const [txRes, userRes] = await Promise.all([
-        axios.get('/transactions', { params: { search, category } }),
-        axios.get('/auth/profile').catch(() => ({ data: { name: 'Marcus Kim', email: 'marcus@finpulse.ai', monthlyBudget: 50000 } }))
+        axios.get('/transactions', { params: { search, category, limit: 100, page: 1 } }),
+        axios.get('/auth/profile').catch(() => ({ data: { name: '', email: '', monthlyBudget: 0 } }))
       ]);
 
-      const txArray = txRes.data.transactions || (Array.isArray(txRes.data) ? txRes.data : []);
+      const firstPage = txRes.data;
+      let txArray = firstPage.transactions || (Array.isArray(firstPage) ? firstPage : []);
+      const totalPages = Math.max(1, Number(firstPage.pages) || 1);
+      if (totalPages > 1) {
+        const remainingPages = await Promise.all(
+          Array.from({ length: totalPages - 1 }, (_, index) =>
+            axios.get('/transactions', { params: { search, category, limit: 100, page: index + 2 } })
+          )
+        );
+        txArray = txArray.concat(...remainingPages.map((response) => response.data.transactions || []));
+      }
       setTransactions(txArray);
       
       if (userRes.data) {
         setUserProfile(userRes.data);
       }
 
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      const currentMonthTransactions = txArray.filter((t) => {
+        const date = new Date(t.date);
+        return date >= monthStart && date < nextMonthStart;
+      });
       const catMap = {};
-      txArray.forEach((t) => {
+      currentMonthTransactions.forEach((t) => {
         if (t.type === 'expense') {
           const amt = Number(t.amount || 0);
           catMap[t.category] = (catMap[t.category] || 0) + amt;
@@ -72,16 +93,43 @@ export default function Dashboard() {
     }
   };
 
-  const monthlyBudget = Number(userProfile.monthlyBudget || 50000);
-  const totalExpenses = transactions
+  const monthlyBudget = Number(userProfile.monthlyBudget ?? 0);
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const currentMonthTransactions = transactions.filter((t) => {
+    const date = new Date(t.date);
+    return date >= monthStart && date < nextMonthStart;
+  });
+  const totalExpenses = currentMonthTransactions
     .filter(t => t.type === 'expense')
     .reduce((acc, t) => acc + Number(t.amount || 0), 0);
-  const totalIncome = transactions
+  const totalIncome = currentMonthTransactions
     .filter(t => t.type === 'income')
     .reduce((acc, t) => acc + Number(t.amount || 0), 0);
 
   const remainingBudget = monthlyBudget - totalExpenses;
   const percentageRemaining = monthlyBudget > 0 ? ((remainingBudget / monthlyBudget) * 100).toFixed(1) : 0;
+
+  useEffect(() => {
+    if (activeTab !== 'alerts') return;
+    axios.get('/alerts').then((response) => {
+      setAlerts(response.data.alerts || []);
+      setUnreadAlerts(response.data.unreadCount || 0);
+    }).catch((err) => {
+      setAlertNotice(err.response?.data?.error || 'Could not load alerts.');
+    });
+  }, [activeTab]);
+
+  const markAlertRead = async (id) => {
+    try {
+      await axios.patch(`/alerts/${id}/read`);
+      setAlerts((prev) => prev.map((alert) => alert._id === id ? { ...alert, readAt: new Date().toISOString() } : alert));
+      setUnreadAlerts((count) => Math.max(0, count - 1));
+    } catch (err) {
+      setAlertNotice(err.response?.data?.error || 'Could not mark alert as read.');
+    }
+  };
 
   // Handle AI Chat Send
   const handleSendAiMessage = async (e) => {
@@ -98,14 +146,14 @@ export default function Dashboard() {
       const res = await axios.post('/ai/chat', { message: userMsg, transactions, summary }).catch(() => null);
       
       let reply = "";
-      if (res && res.data && res.data.reply) {
-        reply = res.data.reply;
+      if (res && res.data && (res.data.text || res.data.reply)) {
+        reply = res.data.text || res.data.reply;
       } else {
         // Intelligent fallback simulator using actual state data
         if (userMsg.toLowerCase().includes('budget') || userMsg.toLowerCase().includes('spend')) {
           reply = `You have spent ${formatINR(totalExpenses)} out of your ${formatINR(monthlyBudget)} monthly limit. You have ${formatINR(remainingBudget)} remaining (${percentageRemaining}%).`;
         } else if (userMsg.toLowerCase().includes('grocery') || userMsg.toLowerCase().includes('dining')) {
-          const topCat = summary.sort((a,b) => b.value - a.value)[0];
+          const topCat = [...summary].sort((a,b) => b.value - a.value)[0];
           reply = topCat ? `Your highest spending category right now is ${topCat.name} at ${formatINR(topCat.value)}.` : "No major category spikes recorded yet.";
         } else {
           reply = `Based on your live ledger of ${transactions.length} transactions, your accounts are active. Total income recorded is ${formatINR(totalIncome)} and total expenses are ${formatINR(totalExpenses)}.`;
@@ -123,6 +171,9 @@ export default function Dashboard() {
   // Render different views depending on active sidebar tab
   const renderContent = () => {
     switch (activeTab) {
+      case 'savings':
+        return <SavingsCoach />;
+
       case 'analytics':
         return (
           <div className="space-y-6">
@@ -357,12 +408,22 @@ export default function Dashboard() {
       case 'alerts':
         return (
           <div className="space-y-6">
-            <h2 className="text-xl font-bold text-white">Security & Spending Alerts</h2>
-            <div className="bg-[#111827] border border-slate-800/80 p-6 rounded-2xl text-slate-300 space-y-3">
-              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-300 flex items-center gap-2">
+            <div className="flex items-center justify-between gap-3">
+              <div><h2 className="text-xl font-bold text-white">Security & Spending Alerts</h2><p className="text-xs text-slate-400 mt-1">{unreadAlerts} unread alert{unreadAlerts === 1 ? '' : 's'}</p></div>
+              <span className="text-xs rounded-full px-3 py-1 border border-amber-500/20 bg-amber-500/10 text-amber-300">Large-transaction monitoring</span>
+            </div>
+            {alertNotice && <div className="p-3 rounded-xl border border-indigo-500/20 bg-indigo-500/10 text-sm text-indigo-200">{alertNotice}</div>}
+            <div className="bg-[#111827] border border-slate-800/80 p-5 rounded-2xl">
+              <h3 className="font-bold text-white mb-2">Email alerts</h3>
+              <p className="text-xs text-slate-400">Large-expense alerts are sent to your account email when email notifications are configured.</p>
+            </div>
+            <div className="bg-[#111827] border border-slate-800/80 p-5 rounded-2xl">
+              <div className="p-3 mb-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-300 flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 shrink-0" />
-                <span>Budget tracking limit is currently at {percentageRemaining}% remaining capacity.</span>
+                <span>Current budget capacity: {percentageRemaining}% remaining. A large-expense alert is created at ₹10,000 or 30% of your configured monthly budget, whichever threshold is reached first.</span>
               </div>
+              <h3 className="font-bold text-white mb-3">Recent alerts</h3>
+              {alerts.length === 0 ? <p className="text-sm text-slate-400 py-6 text-center">No alerts yet. A warning appears here when a qualifying large expense is recorded.</p> : <div className="space-y-3">{alerts.map(alert => <article key={alert._id} className={`rounded-xl border p-4 ${alert.readAt ? 'border-slate-800 bg-slate-900/40' : 'border-amber-500/30 bg-amber-500/5'}`}><div className="flex items-start justify-between gap-3"><div><div className="flex items-center gap-2"><span className={`text-[10px] uppercase font-bold ${alert.severity === 'critical' ? 'text-rose-300' : 'text-amber-300'}`}>{alert.severity}</span><span className="text-[10px] text-slate-500">{new Date(alert.createdAt).toLocaleString()}</span></div><h4 className="font-semibold text-white mt-1">{alert.title}</h4><p className="text-sm text-slate-300 mt-2">{alert.message}</p></div>{!alert.readAt && <button onClick={() => markAlertRead(alert._id)} className="shrink-0 text-xs text-indigo-300 hover:text-indigo-200">Mark read</button>}</div></article>)}</div>}
             </div>
           </div>
         );
