@@ -100,7 +100,7 @@ router.put('/profile', protect, async (req, res) => {
     }
 
     if (phoneNumber !== undefined) {
-      if (typeof phoneNumber !== 'string' || (phoneNumber.trim() && !/^\\+?[0-9 ()-]{7,20}$/.test(phoneNumber.trim()))) {
+      if (typeof phoneNumber !== 'string' || (phoneNumber.trim() && !/^\+?[0-9 ()-]{7,20}$/.test(phoneNumber.trim()))) {
         return res.status(400).json({ error: 'Phone number must be a valid number including country code when possible.' });
       }
       updates.phoneNumber = phoneNumber.trim();
